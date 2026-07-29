@@ -13,7 +13,7 @@ from pathlib import Path
 
 from uilab import css
 from uilab.driver import get_driver
-from uilab.project import Project, Story
+from uilab.project import Project, Story, stylesheet_paths
 
 Viewport = namedtuple("Viewport", "width height label")
 
@@ -29,19 +29,20 @@ DEFAULT_POINTS = (WCAG_REFLOW, Viewport(1920, 1080, "desktop"),
 
 def derived_matrix(project: Project) -> list[Viewport]:
     """Both sides of every declared threshold, plus the project's own points."""
-    points: dict[tuple[int, int], Viewport] = {
-        (v.width, v.height): v for v in DEFAULT_POINTS}
+    points: dict[tuple[int, int], Viewport] = {}
+    if project.include_default_viewports:
+        points.update({(view.width, view.height): view for view in DEFAULT_POINTS})
     for width, height in project.extra_viewports:
         points[(width, height)] = Viewport(width, height, f"{width}x{height}")
-    if project.stylesheet:
-        text = css.stylesheet_text(project.stylesheet)
+    for path in stylesheet_paths(project):
+        text = css.stylesheet_text(path)
         for block in css.size_blocks(css.parse_blocks(text)):
             for name, value in css.thresholds(block):
                 for edge in (value, value + 1):
                     key = (edge, 1000) if name.endswith("width") else (1400, edge)
                     label = f"{'w' if name.endswith('width') else 'h'}{value}"
                     points.setdefault(key, Viewport(key[0], key[1], label))
-    return sorted(points.values(), key=lambda v: (-v.width, -v.height))
+    return sorted(points.values(), key=lambda view: (-view.width, -view.height))
 
 
 def _probe(page, story: Story | None, project: Project) -> dict:

@@ -30,8 +30,10 @@ Design rules, in priority order:
      database happens to hold measures the wrong page and reports it clean.
 """
 from uilab.cascade import Explanation, explain
+from uilab.inspect import describe
 from uilab.project import Project, Story
-from uilab import driver, sweep
+from uilab import driver, laws, sweep
 
-__all__ = ["Project", "Story", "explain", "Explanation", "sweep", "driver"]
+__all__ = ["Project", "Story", "explain", "Explanation", "describe",
+           "sweep", "driver", "laws"]
 __version__ = "0.1.0"
