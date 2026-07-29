@@ -138,3 +138,17 @@ def test_every_registered_driver_is_covered():
     """A registry with one entry is fine; an EMPTY one means this whole file
     silently tested nothing."""
     assert available(), "no drivers registered — the suite proved nothing"
+
+
+def test_wait_for_returns_once_the_element_is_visible(page):
+    """The alternative is sleep(n), which measures a loading state when it is
+    too short and taxes every viewport in a sweep when it is too long."""
+    page.wait_for(".card", timeout_ms=5000)
+    assert page.count(".card") == 1
+
+
+def test_wait_for_raises_rather_than_returning_quietly(page):
+    """A wait that gives up silently is worse than no wait: the caller then
+    measures whatever happened to be on screen and believes it."""
+    with pytest.raises(Exception):
+        page.wait_for(".never-appears", timeout_ms=300)

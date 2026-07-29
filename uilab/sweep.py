@@ -62,6 +62,8 @@ def run(project: Project, viewports: list[Viewport] | None = None,
 
     with project.open() as url, get_driver(driver_name).launch() as page:
         page.goto(url)
+        if project.ready_selector:
+            page.wait_for(project.ready_selector)
         time.sleep(settle_ms / 1000)
         for view in viewports:
             page.set_viewport(view.width, view.height)

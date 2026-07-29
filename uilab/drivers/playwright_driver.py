@@ -59,6 +59,10 @@ class PlaywrightPage:
     def count(self, selector: str) -> int:
         return self._page.locator(selector).count()
 
+    def wait_for(self, selector: str, timeout_ms: int = 10_000) -> None:
+        self._page.locator(selector).first.wait_for(
+            state="visible", timeout=timeout_ms)
+
     def emulate_motion(self, reduced: bool) -> None:
         self._page.emulate_media(reduced_motion="reduce" if reduced else "no-preference")
 

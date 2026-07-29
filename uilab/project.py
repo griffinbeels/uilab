@@ -62,6 +62,12 @@ class Project:
     never_truncate
         Selectors carrying irreducible information — a defect if they ellipsise.
 
+    ready_selector
+        A selector that exists only once the app has actually rendered. The
+        sweep waits for it before measuring anything. Without one, a page that
+        paints a shell or a loading state first gets measured in that state and
+        reported clean.
+
     stories
         The state catalogue.  Empty is legal; the sweep then measures whatever
         the app happens to show, which is where most projects start and most
@@ -74,6 +80,7 @@ class Project:
     serve: Callable[[], contextlib.AbstractContextManager[str]]
     page_path: str = "/"
     stylesheet: Path | None = None
+    ready_selector: str = ""
     shell_selectors: Sequence[str] = ()
     never_truncate: Sequence[str] = ()
     stories: Sequence[Story] = ()

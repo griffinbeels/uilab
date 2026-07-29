@@ -56,6 +56,17 @@ class Page(Protocol):
 
     def count(self, selector: str) -> int: ...
 
+    def wait_for(self, selector: str, timeout_ms: int = 10_000) -> None:
+        """Block until at least one element matches and is visible.
+
+        The alternative every consumer reaches for is `sleep(n)`, and it is
+        wrong in both directions: too short and you measure a loading state,
+        too long and every viewport in a sweep pays for it. Measuring a
+        loading state is the worse half -- an app that renders its shell
+        first reports a page with none of its content on it, and the sweep
+        calls that clean.
+        """
+
     def matched_styles(self, selector: str, prop: str) -> list[dict]:
         """Every CSS rule that matches `selector` and sets `prop`, in cascade
         order, as `{selector, value, important, condition, origin}`.
