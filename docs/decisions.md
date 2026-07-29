@@ -209,6 +209,58 @@ have derivable geometry, and only when the host is itself positioned. A static
 
 ---
 
+## 2026-07-29 — A supported-width floor, but only one the product enforces
+
+**Chosen:** `Project.min_viewport_width` drops narrower widths from the matrix,
+and `sweep.dropped_viewports()` names every one it dropped.
+
+**Over:** measuring every width the stylesheet mentions, forever.
+
+**Deciding input:** *"We don't HAVE to support super super super small width
+window sizes. I think going forward, the minimum officially supported width we
+should support is 850px."* sm64_tracker is a desktop app beside an emulator, not
+a public site; 21 of its 36 probe widths were below 850px, and more than half
+its owed defects lived only there (97 → 43 rows).
+
+**The condition that makes it honest:** the floor must be one the shipped app
+ENFORCES, or it does not narrow the supported range, it hides defects inside it.
+In that consumer the same constant drives the desktop window's `min_size`, its
+default geometry *and* a clamp on restored geometry — `min_size` constrains
+dragging but not the size a window is created at, and neither touches a
+geometry file written before the rule existed. A test fails if the sweep's floor
+and the window's floor ever disagree.
+
+**Priced, not buried:** a floor above 320px retires the WCAG 1.4.10 reflow
+probe, and any mobile-shell CSS below it stops being measured while still
+shipping. `dropped_viewports()` exists so that shows up on every run instead of
+being rediscovered later.
+
+---
+
+## 2026-07-29 — Contact sheets as an implementation tool, not a final check
+
+**Chosen:** `uilab.sheet` — one surface, every width, one image, no baseline.
+
+**Deciding input:** *"for most features while you're implementing, you could
+probably solve a lot of your bugs by simply taking screenshots and going 'oh...
+there's only one rank standard' while you're thinking, or 'oh, UI elements are
+intersecting, weird...'"*
+
+Both examples are drawn from real failures in this module's own consumer, and
+both survived every assertion. A fixture seeded a star with one strategy, so the
+card drew ONE rank banner instead of two and an entire class of defect was
+unmeasurable for weeks. Two banner washes overlapped by 15px at every stacked
+width while four DOM probes reported the page clean. Each is unmistakable in a
+single shot, and neither is expressible as a defect: the first is the fixture
+being wrong, the second is paint.
+
+The 2026-07-27 entry above already concluded that screenshots earn their place
+as "a contact sheet for a human eye". This is that, built — and the correction
+to it is the *timing*: a review aid used after the work is worth far less than
+the same image looked at while the work is still being written.
+
+---
+
 ## Open questions
 
 - **Playwright's trace viewer** records DOM snapshots per action and would

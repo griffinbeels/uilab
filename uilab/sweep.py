@@ -27,7 +27,7 @@ DEFAULT_POINTS = (WCAG_REFLOW, Viewport(1920, 1080, "desktop"),
                   Viewport(1280, 720, "short-window"))
 
 
-def derived_matrix(project: Project) -> list[Viewport]:
+def _candidate_matrix(project: Project) -> list[Viewport]:
     """Both sides of every declared threshold, plus the project's own points."""
     points: dict[tuple[int, int], Viewport] = {}
     if project.include_default_viewports:
@@ -43,6 +43,22 @@ def derived_matrix(project: Project) -> list[Viewport]:
                     label = f"{'w' if name.endswith('width') else 'h'}{value}"
                     points.setdefault(key, Viewport(key[0], key[1], label))
     return sorted(points.values(), key=lambda view: (-view.width, -view.height))
+
+
+def derived_matrix(project: Project) -> list[Viewport]:
+    """The candidate matrix, minus anything below the supported minimum width."""
+    floor = project.min_viewport_width
+    return [view for view in _candidate_matrix(project) if view.width >= floor]
+
+
+def dropped_viewports(project: Project) -> list[Viewport]:
+    """Widths the floor excluded — so a narrowed matrix is never silent.
+
+    A sweep that stops measuring 14 widths and still says "0 defects" reads
+    exactly like one that measures everything. Callers print this.
+    """
+    floor = project.min_viewport_width
+    return [view for view in _candidate_matrix(project) if view.width < floor]
 
 
 def _probe(page, story: Story | None, project: Project) -> dict:

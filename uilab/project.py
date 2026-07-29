@@ -84,6 +84,14 @@ class Project:
         panel, a clamped preview. Without these, adding one collapse control
         turns every folded card into a reported clipping defect.
 
+    min_viewport_width
+        The narrowest width this app is SUPPORTED at. Widths below it are
+        dropped from the matrix, and `dropped_viewports()` reports exactly what
+        was dropped so the narrowing is visible rather than silent. Set it only
+        to a number the shipped app actually ENFORCES — a floor the product
+        does not hold is a floor that only hides defects. 0 means no floor,
+        and the WCAG 1.4.10 reflow probe at 320px still runs.
+
     may_bleed
         Selectors whose ::before/::after is MEANT to paint across other boxes —
         a modal scrim, a focus ring drawn outside its control, a full-bleed
@@ -133,6 +141,7 @@ class Project:
     never_truncate: Sequence[str] = ()
     may_clip: Sequence[str] = ()
     may_bleed: Sequence[str] = ()
+    min_viewport_width: int = 0
     stories: Sequence[Story] = ()
     extra_viewports: Sequence[tuple[int, int]] = ()
     include_default_viewports: bool = True

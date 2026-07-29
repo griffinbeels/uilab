@@ -14,6 +14,15 @@ Three things it does:
   cannot account for.
 - **Reach a state on purpose.** Declare the component states worth measuring
   instead of hoping the current data produces them.
+- **Show you the thing.** `uilab.sheet` renders one surface at every width into
+  a single image. Not a gate and not a baseline — the assertions cannot see
+  "correct but wrong", and most of what they miss is obvious on sight.
+
+Projects that enforce a minimum window width declare it once, as
+`min_viewport_width`; narrower widths leave the matrix and
+`sweep.dropped_viewports()` reports exactly what was dropped, so a narrowed
+sweep never passes for a complete one. Set it only to a number the shipped app
+actually enforces.
 
 ## Use it
 

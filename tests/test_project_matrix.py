@@ -56,3 +56,48 @@ def test_stylesheet_paths_normalises_a_single_path(tmp_path):
     sheet.write_text("", encoding="utf-8")
     assert stylesheet_paths(Project(serve=_noop_serve, stylesheet=sheet)) == [sheet]
     assert stylesheet_paths(Project(serve=_noop_serve)) == []
+
+
+# --- the supported-width floor -------------------------------------------
+#
+# Narrowing the matrix is the one change here that can make a sweep report
+# FEWER defects without fixing anything, so each half is pinned: the floor
+# drops what it should, keeps what it should, and says out loud what it took.
+
+
+def test_a_floor_drops_widths_below_it(tmp_path):
+    sheet = tmp_path / "s.css"
+    sheet.write_text("@media (max-width: 400px) { .a { color: red } }\n"
+                     "@media (max-width: 900px) { .b { color: red } }\n")
+    project = Project(serve=_noop_serve, stylesheet=sheet,
+                      include_default_viewports=False, min_viewport_width=850)
+    widths = {view.width for view in sweep.derived_matrix(project)}
+    assert widths == {900, 901}, widths
+
+
+def test_no_floor_keeps_everything_including_the_wcag_reflow_probe():
+    """0 means no floor, and 320px is a real accessibility criterion — it must
+    not quietly disappear for projects that never set a minimum."""
+    widths = {view.width for view in sweep.derived_matrix(Project(serve=_noop_serve))}
+    assert 320 in widths
+
+
+def test_the_floor_reports_what_it_dropped(tmp_path):
+    """A narrowed matrix that still says "0 defects" reads exactly like a
+    complete one. The dropped list is what makes the narrowing visible."""
+    sheet = tmp_path / "s.css"
+    sheet.write_text("@media (max-width: 400px) { .a { color: red } }\n")
+    project = Project(serve=_noop_serve, stylesheet=sheet,
+                      include_default_viewports=False, min_viewport_width=850)
+    assert not sweep.derived_matrix(project)
+    assert {view.width for view in sweep.dropped_viewports(project)} == {400, 401}
+
+
+def test_an_extra_viewport_below_the_floor_is_dropped_too(tmp_path):
+    """Otherwise the floor is advisory: a project could keep measuring 320px by
+    listing it explicitly, and the number would mean two different things."""
+    project = Project(serve=_noop_serve, include_default_viewports=False,
+                      extra_viewports=((320, 800), (1000, 800)),
+                      min_viewport_width=850)
+    assert {view.width for view in sweep.derived_matrix(project)} == {1000}
+    assert {view.width for view in sweep.dropped_viewports(project)} == {320}
