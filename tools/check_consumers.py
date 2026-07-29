@@ -19,7 +19,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+def _repo_root() -> Path:
+    """This repo's root, from a worktree as well as the primary checkout.
+
+    Consumer paths in consumers.json are relative to the repo so no home
+    directory is published -- which means resolving them from `parents[1]`
+    silently points at `.claude/worktrees/<slug>/..` when run from a worktree,
+    finds nothing, and reports every consumer as `[skip]`. The command then
+    EXITS 0 having checked nothing, which is the shape of green-forever
+    (measured 2026-07-29: two consumers skipped, exit 0, from a worktree). Same
+    bug a consumer already fixed once in its own uilab resolver.
+    """
+    root = Path(__file__).resolve().parents[1]
+    for parent in root.parents:
+        if parent.name == "worktrees" and parent.parent.name == ".claude":
+            return parent.parent.parent
+    return root
+
+
+ROOT = _repo_root()
 
 
 def load() -> list[dict]:
