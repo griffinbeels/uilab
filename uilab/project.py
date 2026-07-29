@@ -62,6 +62,11 @@ class Project:
     never_truncate
         Selectors carrying irreducible information — a defect if they ellipsise.
 
+    may_clip
+        Selectors whose whole purpose is to hide their own content: a collapsed
+        panel, a clamped preview. Without these, adding one collapse control
+        turns every folded card into a reported clipping defect.
+
     ready_selector
         A selector that exists only once the app has actually rendered. The
         sweep waits for it before measuring anything. Without one, a page that
@@ -83,6 +88,7 @@ class Project:
     ready_selector: str = ""
     shell_selectors: Sequence[str] = ()
     never_truncate: Sequence[str] = ()
+    may_clip: Sequence[str] = ()
     stories: Sequence[Story] = ()
     extra_viewports: Sequence[tuple[int, int]] = ()
     known_defects: dict[str, str] = field(default_factory=dict)

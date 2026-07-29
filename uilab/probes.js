@@ -44,6 +44,14 @@
     const root = cfg.at ? document.querySelector(cfg.at) : document.body;
     if (!root) return {error: "scope selector matched nothing: " + cfg.at};
     const neverTruncate = cfg.neverTruncate || [];
+    // Elements whose whole PURPOSE is to hide their content: a collapsed
+    // panel, a clamped preview, a peeking drawer. Without this the sweep
+    // reports every one of them as a clipping defect the moment a project
+    // gains a collapse control -- 108 of them in one run, all correct
+    // behaviour. Declared by the project, because only it knows which of its
+    // overflow:hidden boxes are deliberate.
+    const mayClip = cfg.mayClip || [];
+    const clipAllowed = (el) => mayClip.some((sel) => el.matches(sel));
     const out = {overflow: [], clipped: [], truncated: [], overlap: []};
     const all = Array.from(root.querySelectorAll("*")).filter(visible);
 
@@ -73,7 +81,7 @@
     //    that the bottom of the card is being cut off.
     for (const el of all) {
       const style = getComputedStyle(el);
-      if (clippedByDesign(style)) continue;
+      if (clippedByDesign(style) || clipAllowed(el)) continue;
       const hiddenY = style.overflowY === "hidden" || style.overflow === "hidden";
       const hiddenX = style.overflowX === "hidden" || style.overflow === "hidden";
       if (hiddenY && el.scrollHeight - el.clientHeight > EPS)

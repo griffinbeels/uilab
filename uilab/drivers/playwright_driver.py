@@ -66,6 +66,9 @@ class PlaywrightPage:
     def emulate_motion(self, reduced: bool) -> None:
         self._page.emulate_media(reduced_motion="reduce" if reduced else "no-preference")
 
+    def wait_ms(self, milliseconds: int) -> None:
+        self._page.wait_for_timeout(milliseconds)
+
     def matched_styles(self, selector: str, prop: str) -> list[dict]:
         """Cascade-ordered rules setting `prop` on the element, from the engine."""
         self._cdp.send("DOM.enable")

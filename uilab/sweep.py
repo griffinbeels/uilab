@@ -46,7 +46,8 @@ def derived_matrix(project: Project) -> list[Viewport]:
 
 def _probe(page, story: Story | None, project: Project) -> dict:
     config = {"at": story.at if story else "",
-              "neverTruncate": list(project.never_truncate)}
+              "neverTruncate": list(project.never_truncate),
+              "mayClip": list(project.may_clip)}
     import json
     return page.evaluate(f"(__uilab({json.dumps(config)}))")
 

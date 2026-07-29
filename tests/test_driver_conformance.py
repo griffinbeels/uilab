@@ -152,3 +152,15 @@ def test_wait_for_raises_rather_than_returning_quietly(page):
     measures whatever happened to be on screen and believes it."""
     with pytest.raises(Exception):
         page.wait_for(".never-appears", timeout_ms=300)
+
+
+def test_wait_ms_actually_waits(page):
+    """A wait that returns immediately is worse than no wait: a probe then
+    samples mid-render and reports whatever it caught. Four browser tests with
+    four 400ms waits once finished in 1.57s, because the wait was written as an
+    un-awaited promise inside a function body."""
+    import time
+    started = time.monotonic()
+    page.wait_ms(350)
+    elapsed = (time.monotonic() - started) * 1000
+    assert elapsed >= 300, f"wait_ms(350) returned after {elapsed:.0f}ms"

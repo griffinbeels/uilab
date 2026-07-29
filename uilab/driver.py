@@ -67,6 +67,18 @@ class Page(Protocol):
         calls that clean.
         """
 
+    def wait_ms(self, milliseconds: int) -> None:
+        """Wait, really.
+
+        The obvious `evaluate("new Promise(r => setTimeout(r, 400))")` does not
+        work through a wrapper that turns a statement into a function BODY: the
+        promise is constructed, never returned, so nothing awaits it and the
+        call returns immediately. It reads as a wait and is a no-op, which is
+        worse than no wait at all -- a probe then samples a layout mid-render
+        and reports whatever it caught (measured 2026-07-28: four browser tests
+        with four 400ms waits finished in 1.57s).
+        """
+
     def matched_styles(self, selector: str, prop: str) -> list[dict]:
         """Every CSS rule that matches `selector` and sets `prop`, in cascade
         order, as `{selector, value, important, condition, origin}`.
