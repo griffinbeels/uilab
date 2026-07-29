@@ -168,6 +168,9 @@ class Driver(Protocol):
 
 
 _REGISTRY: dict[str, Callable[[], Driver]] = {}
+# One live instance per name; see get_driver() for why this is correctness
+# rather than caching.
+_INSTANCES: dict[str, Driver] = {}
 
 
 def register(name: str) -> Callable[[Callable[[], Driver]], Callable[[], Driver]]:
@@ -179,6 +182,10 @@ def register(name: str) -> Callable[[Callable[[], Driver]], Callable[[], Driver]
     """
     def wrap(factory: Callable[[], Driver]) -> Callable[[], Driver]:
         _REGISTRY[name] = factory
+        # Re-registering a name replaces the factory, so drop any instance
+        # get_driver() cached from the old one -- otherwise the swap silently
+        # does nothing for the rest of the process.
+        _INSTANCES.pop(name, None)
         return factory
     return wrap
 
@@ -203,7 +210,24 @@ def use_driver(name: str) -> None:
 
 
 def get_driver(name: str | None = None) -> Driver:
-    """The driver to use: explicit argument, then UILAB_DRIVER, then default."""
+    """The driver to use: explicit argument, then UILAB_DRIVER, then default.
+
+    ONE instance per name, cached. Not an optimisation — the alternative is
+    silently broken. A driver may hold process-wide state that it
+    reference-counts across nested `launch()` calls, which is what lets a second
+    browser stand beside a live one; the Playwright driver does exactly that,
+    because `sync_playwright()` cannot be nested on a thread. Handing every
+    caller a FRESH instance made that counter per-object and therefore useless:
+    two `get_driver().launch()` calls each started their own Playwright, the
+    second saw the first one's loop running, and raised "Sync API inside the
+    asyncio loop" — an error naming asyncio nobody wrote.
+
+    It cost a consumer a real test. sm64_tracker's three-client livelock guard
+    was skipped for two days as "needs multi-page support in uilab's driver",
+    with multi-client support sitting right there and only the handout in the
+    way (2026-07-29). Caching is safe precisely because the counter exists: when
+    the last context closes, the driver tears its state down again.
+    """
     _load_builtins()
     chosen = name or _selected or os.environ.get("UILAB_DRIVER") or _DEFAULT
     if chosen not in _REGISTRY:
@@ -211,7 +235,9 @@ def get_driver(name: str | None = None) -> Driver:
             f"unknown driver {chosen!r}; registered: {sorted(_REGISTRY)}. "
             "Set UILAB_DRIVER to one of those, or register a new one with "
             "@uilab.driver.register.")
-    return _REGISTRY[chosen]()
+    if chosen not in _INSTANCES:
+        _INSTANCES[chosen] = _REGISTRY[chosen]()
+    return _INSTANCES[chosen]
 
 
 def _load_builtins() -> None:

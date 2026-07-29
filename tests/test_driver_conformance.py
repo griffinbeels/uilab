@@ -356,3 +356,36 @@ def test_evaluate_still_accepts_a_statement_block(page):
     """The fallback is exact, not heuristic: a statement block is a SyntaxError
     as an expression, which is what selects it."""
     assert page.evaluate("const a = 2; return a * 3;") == 6
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_three_clients_can_be_open_at_once(driver_name, url):
+    """Several simultaneous clients, each fetched through get_driver().
+
+    This is the shape a real scenario needs: a browser tab, a desktop GUI and a
+    second tab all connected to one app, which is how a shared-setting livelock
+    reproduces at all. It is asserted THROUGH `get_driver()` rather than by
+    reusing one driver object, because the handout is where it broke: the
+    Playwright driver reference-counts its process-wide state across nested
+    launches, and a fresh instance per call made that counter per-object. The
+    second launch then started a second Playwright, saw the first one's loop
+    running, and raised "Sync API inside the asyncio loop" -- an error about
+    asyncio in code that uses none, which reads as a hard limit of the library.
+
+    A consumer believed it was one. sm64_tracker skipped its three-client
+    livelock guard for two days as "needs multi-page support in uilab's driver"
+    (2026-07-29). The support was there; only this was missing.
+    """
+    with get_driver(driver_name).launch() as first:
+        first.goto(url)
+        with get_driver(driver_name).launch() as second:
+            second.goto(url)
+            with get_driver(driver_name).launch() as third:
+                third.goto(url)
+                # Independent clients, not three handles on one page: prove it
+                # by making them disagree.
+                for index, client in enumerate((first, second, third)):
+                    client.evaluate(f"document.title = 'client-{index}'")
+                assert [client.evaluate("document.title")
+                        for client in (first, second, third)] == [
+                    "client-0", "client-1", "client-2"]
