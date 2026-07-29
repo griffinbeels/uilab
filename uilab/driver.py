@@ -1,0 +1,139 @@
+"""The driver seam — and the reason it exists.
+
+Browser automation is the fastest-moving dependency this module has. Playwright
+is today's answer; it replaced Puppeteer as the default, which replaced
+Selenium, and something will replace it. WebDriver BiDi is already standardising
+much of what CDP does today. When that happens the cost of switching should be
+ONE file here, not a rewrite of every probe, sweep and gate that sits on top.
+
+So two things, not one:
+
+  1. A narrow `Driver` protocol. Everything above it — probes, sweep, cascade
+     helper, story runner — speaks only this, and none of them import
+     playwright. Grep for the import: it appears in exactly one module.
+
+  2. A CONFORMANCE SUITE (tests/test_driver_conformance.py) that every
+     registered driver runs. An interface alone is a promise; the suite is what
+     makes "swap it in" a checkable claim rather than an aspiration. A new
+     driver is trusted when it goes green, and until then it is a candidate.
+
+Pick with UILAB_DRIVER, or `use_driver()` in-process. Registration is one
+decorator, so adding a candidate never edits this file's logic.
+"""
+from __future__ import annotations
+
+import os
+from collections.abc import Callable, Iterator
+from typing import Protocol, runtime_checkable
+
+
+@runtime_checkable
+class Page(Protocol):
+    """One open page. Deliberately small: five verbs and two queries.
+
+    Anything a probe needs that is NOT here is a sign the protocol is wrong,
+    not a reason to reach around it — reaching around is how a driver becomes
+    unswappable one convenience at a time.
+    """
+
+    def goto(self, url: str) -> None: ...
+
+    def set_viewport(self, width: int, height: int) -> None: ...
+
+    def evaluate(self, expression: str) -> object:
+        """Run JS in the page and return a JSON-serialisable value."""
+
+    def screenshot(self) -> bytes: ...
+
+    def click(self, selector: str) -> None:
+        """Click the ONE element matching `selector`.
+
+        Must raise if the selector matches more than one element. Silently
+        acting on the first match is the single most expensive failure mode
+        this module exists to prevent — it produced three separate wrong-answer
+        debugging sessions before uilab was extracted.
+        """
+
+    def count(self, selector: str) -> int: ...
+
+    def matched_styles(self, selector: str, prop: str) -> list[dict]:
+        """Every CSS rule that matches `selector` and sets `prop`, in cascade
+        order, as `{selector, value, important, condition, origin}`.
+
+        ASK THE ENGINE. A hand-rolled walk over `document.styleSheets` looks
+        easy and is not: with CSS Nesting every CSSStyleRule carries an (empty,
+        truthy) `cssRules` list, so the obvious `if (rule.cssRules) recurse`
+        skips every real rule and reports a clean sheet. That exact bug cost
+        hours. Chrome answers this properly via CDP `CSS.getMatchedStylesForNode`.
+        """
+
+    def emulate_motion(self, reduced: bool) -> None:
+        """Force `prefers-reduced-motion`.
+
+        Raw headless Chrome defaults to `reduce`, and any stylesheet that
+        honours it then makes every transition finish instantly — so animation
+        checks report defects that exist only in the harness. Drivers MUST
+        default to no-preference; this is for testing the reduced case on
+        purpose.
+        """
+
+
+@runtime_checkable
+class Driver(Protocol):
+    name: str
+
+    def launch(self, headless: bool = True) -> Iterator[Page]:
+        """Context manager yielding a Page. Must clean up on exception."""
+
+
+_REGISTRY: dict[str, Callable[[], Driver]] = {}
+
+
+def register(name: str) -> Callable[[Callable[[], Driver]], Callable[[], Driver]]:
+    """Register a driver factory under `name`.
+
+    A candidate driver adds itself with this and appears in the conformance
+    suite automatically — no edit to the selection logic below, which is what
+    keeps "try a new tool" cheap.
+    """
+    def wrap(factory: Callable[[], Driver]) -> Callable[[], Driver]:
+        _REGISTRY[name] = factory
+        return factory
+    return wrap
+
+
+def available() -> list[str]:
+    """Registered driver names, for the conformance suite to parametrise over."""
+    _load_builtins()
+    return sorted(_REGISTRY)
+
+
+_DEFAULT = "playwright"
+_selected: str | None = None
+
+
+def use_driver(name: str) -> None:
+    """Select a driver for this process (tests, or trying a candidate)."""
+    global _selected
+    _load_builtins()
+    if name not in _REGISTRY:
+        raise LookupError(f"unknown driver {name!r}; registered: {sorted(_REGISTRY)}")
+    _selected = name
+
+
+def get_driver(name: str | None = None) -> Driver:
+    """The driver to use: explicit argument, then UILAB_DRIVER, then default."""
+    _load_builtins()
+    chosen = name or _selected or os.environ.get("UILAB_DRIVER") or _DEFAULT
+    if chosen not in _REGISTRY:
+        raise LookupError(
+            f"unknown driver {chosen!r}; registered: {sorted(_REGISTRY)}. "
+            "Set UILAB_DRIVER to one of those, or register a new one with "
+            "@uilab.driver.register.")
+    return _REGISTRY[chosen]()
+
+
+def _load_builtins() -> None:
+    if _REGISTRY:
+        return
+    from uilab.drivers import playwright_driver  # noqa: F401  (self-registers)

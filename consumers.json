@@ -1,0 +1,31 @@
+{
+  "_why": [
+    "Every project on this machine that imports uilab, and how to run its",
+    "tests. Consumers install EDITABLE, so they always get the newest code with",
+    "no update step -- which means the risk runs the other way: a change here",
+    "reaches every consumer instantly, and nothing tells you it broke one until",
+    "you open that app.",
+    "",
+    "tools/check_consumers.py reads this file. Adding a project is one entry --",
+    "no code change.",
+    "",
+    "path is relative to THIS repo, so no home directory is published.",
+    "Consumers are expected to sit beside it. A missing checkout is SKIPPED,",
+    "never failed, so a machine that has not cloned a consumer is not a broken",
+    "one.",
+    "",
+    "python is relative to path; verify is argv passed to that interpreter.",
+    "Prefer the narrowest suite that would actually catch a uilab regression --",
+    "a full suite that takes three minutes gets skipped, and a gate nobody runs",
+    "is a gate that does not exist."
+  ],
+  "consumers": [
+    {
+      "name": "sm64_tracker",
+      "path": "../sm64_tracker",
+      "python": ".venv/Scripts/python.exe",
+      "verify": ["-m", "pytest", "tests/test_responsive.py",
+                 "tests/test_responsive_structure.py", "-q"]
+    }
+  ]
+}

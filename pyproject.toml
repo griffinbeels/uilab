@@ -1,0 +1,33 @@
+[project]
+name = "uilab"
+version = "0.1.0"
+description = "Browser instrumentation for UI/CSS/layout work: measure a real page, ask the engine why a rule lost, and reach every component state on purpose."
+requires-python = ">=3.12"
+
+# Playwright is the one hard dependency, and it earns it twice over defaults
+# alone: strict locators refuse to guess when a selector matches more than one
+# element, and `reduced_motion` defaults to "no-preference" where raw headless
+# Chrome defaults to "reduce". Both of those were real, expensive bugs before
+# this module existed (see docs/decisions.md).
+#
+# Pillow is for the contact sheet only. Everything else is stdlib.
+dependencies = [
+    "playwright>=1.49",
+    "pillow>=10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.entry-points.pytest11]
+uilab = "uilab.pytest_plugin"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["uilab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
