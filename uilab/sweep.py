@@ -48,7 +48,8 @@ def derived_matrix(project: Project) -> list[Viewport]:
 def _probe(page, story: Story | None, project: Project) -> dict:
     config = {"at": story.at if story else "",
               "neverTruncate": list(project.never_truncate),
-              "mayClip": list(project.may_clip)}
+              "mayClip": list(project.may_clip),
+              "mayBleed": list(project.may_bleed)}
     import json
     return page.evaluate(f"(__uilab({json.dumps(config)}))")
 
@@ -83,7 +84,8 @@ def run(project: Project, viewports: list[Viewport] | None = None,
                 if isinstance(result, dict) and result.get("error"):
                     continue                    # story not applicable at this size
                 label = story.name if story else "page"
-                for kind in ("overflow", "clipped", "truncated", "overlap"):
+                for kind in ("overflow", "clipped", "truncated", "overlap",
+                             "decoration"):
                     for item in result.get(kind, []):
                         defects[f"{view.width}x{view.height} [{label}] {kind} :: "
                                 f"{item['selector']}"] = item["detail"]

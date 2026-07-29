@@ -7,7 +7,8 @@ single place.
 Three things it does:
 
 - **Sweep** every breakpoint the stylesheet declares — both sides of each — and
-  report overflow, clipping, truncation and overlap.
+  report overflow, clipping, truncation, overlap, and decorations painting onto
+  a box they do not own.
 - **Explain** why a CSS property is not what you wrote: matched rules straight
   from the style engine, *plus* the layout override that the cascade alone
   cannot account for.

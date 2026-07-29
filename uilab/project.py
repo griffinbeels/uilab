@@ -84,6 +84,12 @@ class Project:
         panel, a clamped preview. Without these, adding one collapse control
         turns every folded card into a reported clipping defect.
 
+    may_bleed
+        Selectors whose ::before/::after is MEANT to paint across other boxes —
+        a modal scrim, a focus ring drawn outside its control, a full-bleed
+        hero wash. Everything else must keep its decoration inside its own box
+        and its ancestors' padding; see probe class 5.
+
     ready_selector
         A selector that exists only once the app has actually rendered. The
         sweep waits for it before measuring anything. Without one, a page that
@@ -126,6 +132,7 @@ class Project:
     shell_selectors: Sequence[str] = ()
     never_truncate: Sequence[str] = ()
     may_clip: Sequence[str] = ()
+    may_bleed: Sequence[str] = ()
     stories: Sequence[Story] = ()
     extra_viewports: Sequence[tuple[int, int]] = ()
     include_default_viewports: bool = True

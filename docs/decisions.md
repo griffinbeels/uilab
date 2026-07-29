@@ -173,6 +173,42 @@ needs a bundler, and these are zero-build importmap apps.
 
 ---
 
+## 2026-07-29 — Probe the paint, not only the tree (decoration collisions)
+
+**Chosen:** derive a `::before`/`::after`'s painted rect from its host's padding
+box and report it when it covers a box that is neither the host nor inside it.
+
+**Over:** the previous position, written into probes.js as a comment on the
+overlap probe — *"decorative washes overlap by design"* — which skipped them.
+
+**Deciding failure:** every probe here walks the DOM, and a pseudo-element is
+not in the DOM. sm64_tracker's rank banners paint their colour wash in a
+`::before`. It bled `-16px` sideways across a 12px grid gap onto the next
+column, and `-8px/-12px` vertically onto the banner stacked beneath it — 15.2px
+of overlap, so the second wash covered the first one's lower edge and the two
+colours met with no seam. The user reported it three times over two days
+(*"it's overlapping in all scenarios"*, *"there needs to be some vertical
+margin between the bottom of the green rect and the top of the white rect"*)
+while three consecutive sweeps reported the page clean, because the only thing
+wrong was in paint. Adding the class found both bugs on the first run, plus the
+sideways one at widths where it was invisible: the gradient had already faded
+to `transparent 88%` by the 4px that crossed.
+
+The law is not "a decoration may not leave its host" — bleeding into an
+ancestor's own padding or grid gap is the normal reason to write one. It is
+that a decoration may not cover a box belonging to something else. Four rules
+keep it usable, each mutation-proved separately in
+`tests/test_probes_decoration.py`: skip pseudos that paint no ink, skip fixed
+and sticky targets (floating over content is what they are for), report once
+per collided *subtree* rather than once per inky descendant (the real defect hit
+eleven), and honour a project's `may_bleed` for scrims and focus rings.
+
+**Limit, stated because it will matter:** only *absolutely positioned* pseudos
+have derivable geometry, and only when the host is itself positioned. A static
+`::before` pushed out of its host by a negative margin is still invisible here.
+
+---
+
 ## Open questions
 
 - **Playwright's trace viewer** records DOM snapshots per action and would
