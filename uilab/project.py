@@ -81,20 +81,58 @@ class Project:
     extra_viewports
         Sizes worth probing regardless of what the stylesheet declares — a user
         report, a device you actually own, the WCAG reflow floor.
+
+    include_default_viewports
+        Whether to probe uilab's own default points — the WCAG 1.4.10 reflow
+        floor at 320px, a desktop size and a short window. True is right for
+        anything meant to be responsive. Set it False for a FIXED-GEOMETRY
+        surface: a recording rig, a kiosk, an embedded panel. game-learnings'
+        column grid raises "viewport too narrow" below its minimum BY DESIGN,
+        so probing 320px there ships a guaranteed failure — and the only other
+        way to land that is a permanent `known_defects` row, which is a lie
+        about what is broken and exactly what `stale_exemptions` exists to
+        prevent. Declared thresholds are still derived either way.
+
+        This does not license switching the defaults off because a sweep is
+        noisy. WCAG reflow is an objective floor for anything a person
+        resizes; this is for surfaces where the probe is not merely failing
+        but meaningless.
+
+    legacy_transition_rules
+        Existing violations of the one-transition law, grandfathered so the law
+        can land on a codebase without a cleanup task attached to it.
     """
     serve: Callable[[], contextlib.AbstractContextManager[str]]
     page_path: str = "/"
-    stylesheet: Path | None = None
+    stylesheet: Path | Sequence[Path] | None = None
     ready_selector: str = ""
     shell_selectors: Sequence[str] = ()
     never_truncate: Sequence[str] = ()
     may_clip: Sequence[str] = ()
     stories: Sequence[Story] = ()
     extra_viewports: Sequence[tuple[int, int]] = ()
+    include_default_viewports: bool = True
     known_defects: dict[str, str] = field(default_factory=dict)
+    legacy_viewport_rules: Sequence[str] = ()
+    legacy_transition_rules: Sequence[str] = ()
 
     @contextlib.contextmanager
     def open(self) -> Iterator[str]:
         """Yield the full URL of the page under test."""
         with self.serve() as base:
             yield base.rstrip("/") + "/" + self.page_path.lstrip("/")
+
+
+def stylesheet_paths(project: Project) -> list[Path]:
+    """The project's stylesheets, however it declared them.
+
+    One file or several: a workbench's chrome is routinely split across a
+    layout sheet, a component sheet and a theme sheet, and a matrix derived
+    from only the first is a matrix with holes in it.
+    """
+    declared = project.stylesheet
+    if declared is None:
+        return []
+    if isinstance(declared, Path):
+        return [declared]
+    return list(declared)

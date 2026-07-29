@@ -43,7 +43,14 @@ class Page(Protocol):
     def evaluate(self, expression: str) -> object:
         """Run JS in the page and return a JSON-serialisable value."""
 
-    def screenshot(self) -> bytes: ...
+    def screenshot(self, clip: dict | None = None) -> bytes:
+        """PNG bytes of the viewport, or of `clip` when given.
+
+        `clip` is `{"x", "y", "width", "height"}` in CSS pixels, and the image
+        comes back scaled by the device pixel ratio — so a caller cropping a
+        fixed grid gets real pixels rather than an upscale of a smaller
+        capture.
+        """
 
     def click(self, selector: str) -> None:
         """Click the ONE element matching `selector`.
@@ -79,6 +86,23 @@ class Page(Protocol):
         with four 400ms waits finished in 1.57s).
         """
 
+    def problems(self) -> list[str]:
+        """Every fault the page reported since the last call, then forget them.
+
+        Console errors, uncaught exceptions, responses with status >= 400 and
+        failed requests — one human-readable line each.
+
+        DRAINING is the contract, not an optimisation. Callers ask once per
+        rung, per viewport, per sweep cell; a list that accumulated would
+        report rung 2's exception again under rung 7's name, which is worse
+        than silence because it sends the reader to the wrong file.
+
+        Why this is on a protocol meant to stay narrow: a sweep that measures
+        a throwing page and reports it clean is not a weaker gate, it is a
+        FALSE one — the report is indistinguishable from a page that works.
+        Every consumer wrote this listener by hand before it lived here.
+        """
+
     def matched_styles(self, selector: str, prop: str) -> list[dict]:
         """Every CSS rule that matches `selector` and sets `prop`, in cascade
         order, as `{selector, value, important, condition, origin}`.
@@ -105,8 +129,42 @@ class Page(Protocol):
 class Driver(Protocol):
     name: str
 
-    def launch(self, headless: bool = True) -> Iterator[Page]:
-        """Context manager yielding a Page. Must clean up on exception."""
+    def launch(self, headless: bool = True,
+               viewport: tuple[int, int] | None = None,
+               device_scale_factor: float = 1.0,
+               use_system_browser: bool = False) -> Iterator[Page]:
+        """Context manager yielding a Page. Must clean up on exception.
+
+        `use_system_browser` asks for the browser the human actually has
+        installed rather than the one this library bundles. It is not a
+        preference: a tool that photographs a page in order to judge how a
+        RECORDING will look must drive the same binary the recording does, and
+        a bundled build is a different renderer with different font
+        rasterisation — so the shot quietly stops answering the question it
+        was taken to answer. A driver that cannot honour it may ignore it.
+        """
+
+
+    def attach(self, endpoint: str,
+               match_url: str | None = None) -> Iterator[Page]:
+        """Connect to a browser someone ELSE started, and yield one open page.
+
+        `endpoint` is a CDP HTTP endpoint (`http://localhost:9310`).
+        `match_url` selects among the open pages by substring; `None` takes the
+        first. Raises `LookupError` when nothing matches — a silent fallback to
+        some other tab is how you photograph the wrong window and believe it.
+
+        MUST NOT NAVIGATE. The state — scroll position, flipped toggles,
+        selection, the half-typed input — is the entire reason for attaching,
+        and a goto() on the way in discards exactly that.
+
+        MUST NOT close the browser on exit; it is not yours. Close only the
+        connection.
+
+        A driver that cannot do this raises `NotImplementedError`, and that is
+        a conformant answer: nothing above this seam assumes attach exists, and
+        the standards-track successor to CDP may never offer it.
+        """
 
 
 _REGISTRY: dict[str, Callable[[], Driver]] = {}

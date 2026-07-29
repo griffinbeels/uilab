@@ -25,6 +25,13 @@
       "path": "../sm64_tracker",
       "python": ".venv/Scripts/python.exe",
       "verify": ["-m", "pytest", "tests/test_responsive.py", "-q"]
+    },
+    {
+      "name": "game-learnings",
+      "path": "../../game-learnings",
+      "python": ".venv/Scripts/python.exe",
+      "verify": ["-m", "pytest", "tests/test_layout.py",
+                 "tests/test_demo_invariants.py", "-q"]
     }
   ]
 }

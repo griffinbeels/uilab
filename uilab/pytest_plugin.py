@@ -17,7 +17,11 @@ import os
 
 import pytest
 
-from uilab import css, sweep
+from uilab import sweep
+# Re-exported so no consumer's import breaks: the laws moved to uilab.laws,
+# where a rule paid for once can be found and added to.
+from uilab.laws import (assert_components_use_container_queries,  # noqa: F401
+                        assert_one_transition_declaration)  # noqa: F401
 
 SKIP_ENV = "UILAB_SKIP"
 
@@ -73,29 +77,3 @@ def assert_no_stale_exemptions(project, result) -> None:
     assert not stale, (
         f"Fixed, but still exempted — remove {len(stale)} row(s) from "
         f"known_defects: {stale[:8]}")
-
-
-def assert_components_use_container_queries(project) -> None:
-    """`@media` styles the shell; component layout gates on `@container`.
-
-    Viewport width is the wrong signal for a component whenever a shell element
-    changes size at a breakpoint: the pane a card lives in is then NOT monotonic
-    in window width, and no viewport threshold can express "this card is too
-    narrow" — every one of them is wrong on one side of the jump.
-    """
-    if not project.stylesheet or not project.shell_selectors:
-        pytest.skip("project declares no stylesheet or no shell selectors")
-    text = css.stylesheet_text(project.stylesheet)
-    shell = tuple(project.shell_selectors)
-    violations = [
-        f"{block.condition} :: {selector}"
-        for block in css.size_blocks(css.parse_blocks(text))
-        if block.kind == "media"
-        for selector in block.selectors
-        if not css.is_shell(selector, shell)]
-    allowed = set(getattr(project, "legacy_viewport_rules", ()) or ())
-    new = [v for v in violations if v not in allowed]
-    assert not new, (
-        "These @media rules style component-internal selectors; component "
-        "layout must gate on @container against its own pane:\n  "
-        + "\n  ".join(new))

@@ -37,11 +37,22 @@ PAGE = """<!doctype html><html><head><style>
   <div class="motion" id="motion"></div>
 </body></html>"""
 
+# A page that misbehaves in all four ways problems() must notice. Kept separate
+# from PAGE so every other test in this file keeps measuring a clean document.
+NOISY_PAGE = """<!doctype html><html><body>
+  <img src="/definitely-not-here.png" alt="">
+  <script>
+    console.error("a console error");
+    setTimeout(() => { throw new Error("an uncaught page error"); }, 0);
+  </script>
+</body></html>"""
+
 
 @pytest.fixture(scope="module")
 def url(tmp_path_factory):
     root = tmp_path_factory.mktemp("page")
     (root / "index.html").write_text(PAGE, encoding="utf-8")
+    (root / "noisy.html").write_text(NOISY_PAGE, encoding="utf-8")
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -164,3 +175,161 @@ def test_wait_ms_actually_waits(page):
     page.wait_ms(350)
     elapsed = (time.monotonic() - started) * 1000
     assert elapsed >= 300, f"wait_ms(350) returned after {elapsed:.0f}ms"
+
+
+def test_problems_is_empty_on_a_clean_page(page):
+    """The half that makes the other half meaningful: a probe that always
+    reports something is a probe nobody reads."""
+    page.wait_for("body")
+    assert page.problems() == []
+
+
+def test_problems_reports_console_pageerror_and_failed_requests(page, url):
+    """A sweep that measures a throwing page and calls it clean is worse than
+    no sweep: the report is indistinguishable from a page that works."""
+    page.goto(url.replace("index.html", "noisy.html"))
+    # NOT wait_for("img"): a broken image has no box, so it is never "visible"
+    # and the wait can only time out. The document is what has arrived.
+    page.wait_for("body")
+    page.wait_ms(300)          # the pageerror is thrown from a timeout callback
+    found = " || ".join(page.problems())
+    assert "a console error" in found, found
+    assert "an uncaught page error" in found, found
+    assert "definitely-not-here.png" in found, found
+
+
+def test_problems_drains_so_the_same_fault_is_not_reported_twice(page, url):
+    """Callers ask per rung, per viewport, per sweep cell. A list that
+    accumulated would blame rung 7 for rung 2's exception."""
+    page.goto(url.replace("index.html", "noisy.html"))
+    page.wait_for("body")
+    page.wait_ms(300)
+    assert page.problems() != []
+    assert page.problems() == []
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    """Width and height straight out of the IHDR chunk.
+
+    Parsed by hand rather than with Pillow: the conformance suite must be able
+    to judge a driver's screenshot without dragging an image library into the
+    seam it is testing.
+    """
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_launch_honours_viewport_and_pixel_density(driver_name, url):
+    """A shot of a recording rig is worthless at the wrong pixel density: the
+    column crops to a 1080x1920 short, and a devicePixelRatio the harness
+    picked instead of the machine's records a blurry upscale."""
+    with get_driver(driver_name).launch(
+            viewport=(1200, 800), device_scale_factor=2.0) as opened:
+        opened.goto(url)
+        assert opened.evaluate("(window.innerWidth)") == 1200
+        assert opened.evaluate("(window.devicePixelRatio)") == 2
+        assert png_size(opened.screenshot()) == (2400, 1600)
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_screenshot_clip_crops_to_the_rect_in_css_pixels(driver_name, url):
+    """The clip is given in CSS px and comes back scaled by the device pixel
+    ratio — that is what makes a column crop land on real pixels rather than
+    on an upscale of a smaller capture."""
+    with get_driver(driver_name).launch(
+            viewport=(1200, 800), device_scale_factor=2.0) as opened:
+        opened.goto(url)
+        clipped = opened.screenshot(
+            clip={"x": 10, "y": 20, "width": 300, "height": 400})
+        assert png_size(clipped) == (600, 800)
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_launch_defaults_are_unchanged(driver_name, url):
+    """The defaults are load-bearing: every existing caller passes nothing."""
+    with get_driver(driver_name).launch() as opened:
+        opened.goto(url)
+        assert opened.evaluate("(window.innerWidth)") == 1440
+        assert opened.evaluate("(window.devicePixelRatio)") == 1
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_attach_is_implemented_or_refuses_by_name(driver_name):
+    """`attach` is the one verb a future driver may genuinely be unable to
+    provide — WebDriver BiDi makes no promise about connecting to a browser
+    someone else started. So the contract is: do it, or say
+    NotImplementedError. What is NOT conformant is a signature that refuses
+    the arguments, or a silent success against an endpoint with nothing
+    behind it.
+
+    Port 9 is the discard protocol; nothing listens there.
+    """
+    driver = get_driver(driver_name)
+    # Checked FIRST, and it is the half that makes this test able to fail at
+    # all: without it a driver with no `attach` raises AttributeError, which
+    # is an Exception, and the assertion below waves it through. Caught by
+    # writing the test before the implementation and watching it go green.
+    assert hasattr(driver, "attach"), (
+        f"{driver_name} has no `attach`. Implement it, or define it raising "
+        f"NotImplementedError — silence is not one of the two answers.")
+    with pytest.raises(Exception) as caught:
+        with driver.attach("http://127.0.0.1:9", match_url=None):
+            pass
+    assert not isinstance(caught.value, (TypeError, AttributeError)), (
+        f"{driver_name}.attach(endpoint, match_url=...) has the wrong "
+        f"signature: {caught.value}")
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_attach_reaches_a_page_someone_else_opened(driver_name, url):
+    """The whole point: the state belongs to the browser that was already
+    running. A driver that launched its own would answer a different question
+    with no error — which is exactly how a screenshot of a clean-room
+    reproduction gets mistaken for a screenshot of the reported bug."""
+    driver = get_driver(driver_name)
+    debug_port = free_port()
+    with driver.launch_with_debugging(debug_port) as owner:
+        owner.goto(url)
+        owner.evaluate("window.__marker = 'set by the owner';")
+        try:
+            with driver.attach(f"http://127.0.0.1:{debug_port}",
+                               match_url="index.html") as attached:
+                assert attached.evaluate("(window.__marker)") == "set by the owner"
+        except NotImplementedError:
+            pytest.skip(f"{driver_name} does not implement attach")
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_attach_does_not_navigate(driver_name, url):
+    """Scroll position, flipped toggles and a half-typed input are the reason
+    to attach at all. A goto() on the way in throws away the very thing being
+    looked at, and the resulting screenshot looks perfectly plausible."""
+    driver = get_driver(driver_name)
+    debug_port = free_port()
+    with driver.launch_with_debugging(debug_port) as owner:
+        owner.goto(url)
+        owner.evaluate("document.title = 'mutated in place';")
+        with driver.attach(f"http://127.0.0.1:{debug_port}",
+                           match_url="index.html") as attached:
+            assert attached.evaluate("(document.title)") == "mutated in place"
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_attach_raises_when_no_page_matches(driver_name, url):
+    """A silent fallback to 'some other tab' is how you photograph the wrong
+    window and believe it."""
+    driver = get_driver(driver_name)
+    debug_port = free_port()
+    with driver.launch_with_debugging(debug_port) as owner:
+        owner.goto(url)
+        with pytest.raises(LookupError):
+            with driver.attach(f"http://127.0.0.1:{debug_port}",
+                               match_url="no-such-page"):
+                pass

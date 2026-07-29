@@ -77,6 +77,32 @@ def thresholds(block: Block) -> list[tuple[str, int]]:
             re.findall(r"(min|max)-(width|height)\s*:\s*(\d+)px", block.condition)]
 
 
+def leaf_rules(css_text: str) -> list[tuple[str, str, int]]:
+    """Every innermost rule as `(selector, body, line)`, 1-based.
+
+    `[^{}]*` for the body is what makes this find leaves and only leaves: a
+    body cannot contain a brace, so an at-rule header never matches — the scan
+    slides past `@media (...) {` and lands on the rule inside it. That is why
+    there is no nesting logic here to get wrong.
+
+    Comments are stripped first, preserving line numbers. Stylesheets in this
+    codebase quote real CSS in prose constantly, and a scanner that reads
+    those sentences as rules inflates every count it produces.
+    """
+    text = strip_comments(css_text)
+    rules = []
+    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
+        raw_selector = match.group(1)
+        # The captured selector starts immediately after the PREVIOUS rule's
+        # closing brace, so it carries that newline — counting from there
+        # names the line above the selector, and a reader sent to a `}` looks
+        # for a bug that is one line down.
+        leading = len(raw_selector) - len(raw_selector.lstrip())
+        line = text[:match.start(1) + leading].count("\n") + 1
+        rules.append((raw_selector.strip(), match.group(2), line))
+    return rules
+
+
 def is_shell(selector: str, shell_selectors: tuple[str, ...]) -> bool:
     """True when this selector only ever styles the application shell.
 
