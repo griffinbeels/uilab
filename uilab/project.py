@@ -31,6 +31,23 @@ class Story:
     `setup` runs in the page before measuring; it may click, seed, or inject.
     `at` is a CSS selector for the element the story is ABOUT, so probes and
     screenshots can be scoped to it rather than re-selecting and picking wrong.
+
+    **`setup` MUST BE IDEMPOTENT.** It runs once per viewport, not once per
+    sweep, so a bare `.click()` on anything that TOGGLES puts the component
+    into a different state at every size — open, closed, open. That is not a
+    declared state, it is sampled data wearing a Story's name, and it is the
+    exact failure this class exists to prevent.
+
+    It also fails in the most convincing way available: the closing frame gets
+    measured mid-transition, so the probe reports real elements at real
+    coordinates hundreds of pixels outside the viewport. It reads as a
+    responsive layout defect, at one viewport only, which is precisely what a
+    genuine breakpoint bug looks like (game-learnings, 2026-07-28 — three
+    "defects" ~340px past the edge, all of them a settings panel sliding shut).
+
+    Write the guard, not the gesture::
+
+        setup="if (!document.querySelector('.panel-open')) gear.click()"
     """
     name: str
     at: str
