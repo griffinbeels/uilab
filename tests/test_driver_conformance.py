@@ -206,3 +206,49 @@ def test_problems_drains_so_the_same_fault_is_not_reported_twice(page, url):
     page.wait_ms(300)
     assert page.problems() != []
     assert page.problems() == []
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    """Width and height straight out of the IHDR chunk.
+
+    Parsed by hand rather than with Pillow: the conformance suite must be able
+    to judge a driver's screenshot without dragging an image library into the
+    seam it is testing.
+    """
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
+    return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_launch_honours_viewport_and_pixel_density(driver_name, url):
+    """A shot of a recording rig is worthless at the wrong pixel density: the
+    column crops to a 1080x1920 short, and a devicePixelRatio the harness
+    picked instead of the machine's records a blurry upscale."""
+    with get_driver(driver_name).launch(
+            viewport=(1200, 800), device_scale_factor=2.0) as opened:
+        opened.goto(url)
+        assert opened.evaluate("(window.innerWidth)") == 1200
+        assert opened.evaluate("(window.devicePixelRatio)") == 2
+        assert png_size(opened.screenshot()) == (2400, 1600)
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_screenshot_clip_crops_to_the_rect_in_css_pixels(driver_name, url):
+    """The clip is given in CSS px and comes back scaled by the device pixel
+    ratio — that is what makes a column crop land on real pixels rather than
+    on an upscale of a smaller capture."""
+    with get_driver(driver_name).launch(
+            viewport=(1200, 800), device_scale_factor=2.0) as opened:
+        opened.goto(url)
+        clipped = opened.screenshot(
+            clip={"x": 10, "y": 20, "width": 300, "height": 400})
+        assert png_size(clipped) == (600, 800)
+
+
+@pytest.mark.parametrize("driver_name", available())
+def test_launch_defaults_are_unchanged(driver_name, url):
+    """The defaults are load-bearing: every existing caller passes nothing."""
+    with get_driver(driver_name).launch() as opened:
+        opened.goto(url)
+        assert opened.evaluate("(window.innerWidth)") == 1440
+        assert opened.evaluate("(window.devicePixelRatio)") == 1

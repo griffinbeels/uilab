@@ -43,7 +43,14 @@ class Page(Protocol):
     def evaluate(self, expression: str) -> object:
         """Run JS in the page and return a JSON-serialisable value."""
 
-    def screenshot(self) -> bytes: ...
+    def screenshot(self, clip: dict | None = None) -> bytes:
+        """PNG bytes of the viewport, or of `clip` when given.
+
+        `clip` is `{"x", "y", "width", "height"}` in CSS pixels, and the image
+        comes back scaled by the device pixel ratio — so a caller cropping a
+        fixed grid gets real pixels rather than an upscale of a smaller
+        capture.
+        """
 
     def click(self, selector: str) -> None:
         """Click the ONE element matching `selector`.
@@ -122,8 +129,20 @@ class Page(Protocol):
 class Driver(Protocol):
     name: str
 
-    def launch(self, headless: bool = True) -> Iterator[Page]:
-        """Context manager yielding a Page. Must clean up on exception."""
+    def launch(self, headless: bool = True,
+               viewport: tuple[int, int] | None = None,
+               device_scale_factor: float = 1.0,
+               use_system_browser: bool = False) -> Iterator[Page]:
+        """Context manager yielding a Page. Must clean up on exception.
+
+        `use_system_browser` asks for the browser the human actually has
+        installed rather than the one this library bundles. It is not a
+        preference: a tool that photographs a page in order to judge how a
+        RECORDING will look must drive the same binary the recording does, and
+        a bundled build is a different renderer with different font
+        rasterisation — so the shot quietly stops answering the question it
+        was taken to answer. A driver that cannot honour it may ignore it.
+        """
 
 
 _REGISTRY: dict[str, Callable[[], Driver]] = {}

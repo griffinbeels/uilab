@@ -74,8 +74,8 @@ class PlaywrightPage:
                                    if expression.strip().startswith("(")
                                    else f"() => {{ {expression} }}")
 
-    def screenshot(self) -> bytes:
-        return self._page.screenshot()
+    def screenshot(self, clip: dict | None = None) -> bytes:
+        return self._page.screenshot(clip=clip) if clip else self._page.screenshot()
 
     def click(self, selector: str) -> None:
         # .click() on a Locator is strict by construction: it raises on a
@@ -141,16 +141,25 @@ class _PlaywrightDriver:
     name = "playwright"
 
     @contextlib.contextmanager
-    def launch(self, headless: bool = True) -> Iterator[PlaywrightPage]:
+    def launch(self, headless: bool = True,
+               viewport: tuple[int, int] | None = None,
+               device_scale_factor: float = 1.0,
+               use_system_browser: bool = False) -> Iterator[PlaywrightPage]:
+        width, height = viewport or (1440, 900)
         with sync_playwright() as play:
-            browser = play.chromium.launch(headless=headless)
+            browser = play.chromium.launch(
+                headless=headless,
+                # `channel` picks the installed Chrome over the bundled
+                # Chromium. Passed conditionally rather than as channel=None,
+                # which is an explicit request for the bundled build.
+                **({"channel": "chrome"} if use_system_browser else {}))
             # reduced_motion is named explicitly rather than left to the
             # default. The default is already correct; saying it out loud is
             # what stops a future edit from quietly inheriting the headless
             # `reduce` that cost this project an afternoon.
             context = browser.new_context(
-                viewport={"width": 1440, "height": 900},
-                device_scale_factor=1,
+                viewport={"width": width, "height": height},
+                device_scale_factor=device_scale_factor,
                 reduced_motion="no-preference",
                 color_scheme="dark")
             page = context.new_page()
