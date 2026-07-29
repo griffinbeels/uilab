@@ -140,13 +140,44 @@ class PlaywrightPage:
 class _PlaywrightDriver:
     name = "playwright"
 
+    def __init__(self) -> None:
+        self._play = None
+        self._open_contexts = 0
+
+    @contextlib.contextmanager
+    def _playwright(self):
+        """One Playwright instance per driver, reference-counted.
+
+        `sync_playwright()` CANNOT BE NESTED on a thread — a second one raises
+        "It looks like you are using Playwright Sync API inside the asyncio
+        loop. Please use the Async API instead", which names the wrong cause
+        and sends you looking for asyncio you never wrote.
+
+        That is not merely a test problem. Holding a live window open and a
+        fresh browser beside it is a real thing to want: comparing what the
+        human is looking at against a clean-room load is the first move in
+        half of all "is this my state or the page?" questions. A driver that
+        can only have one browser at a time cannot answer it.
+        """
+        if self._open_contexts == 0:
+            self._play = sync_playwright().start()
+        self._open_contexts += 1
+        try:
+            yield self._play
+        finally:
+            self._open_contexts -= 1
+            if self._open_contexts == 0:
+                finished, self._play = self._play, None
+                with contextlib.suppress(Exception):
+                    finished.stop()
+
     @contextlib.contextmanager
     def launch(self, headless: bool = True,
                viewport: tuple[int, int] | None = None,
                device_scale_factor: float = 1.0,
                use_system_browser: bool = False) -> Iterator[PlaywrightPage]:
         width, height = viewport or (1440, 900)
-        with sync_playwright() as play:
+        with self._playwright() as play:
             browser = play.chromium.launch(
                 headless=headless,
                 # `channel` picks the installed Chrome over the bundled
@@ -169,6 +200,55 @@ class _PlaywrightDriver:
             finally:
                 with contextlib.suppress(Exception):
                     context.close()
+                with contextlib.suppress(Exception):
+                    browser.close()
+
+
+    @contextlib.contextmanager
+    def attach(self, endpoint: str,
+               match_url: str | None = None) -> Iterator[PlaywrightPage]:
+        with self._playwright() as play:
+            browser = play.chromium.connect_over_cdp(endpoint)
+            try:
+                open_pages = [page for context in browser.contexts
+                              for page in context.pages]
+                chosen = next((page for page in open_pages
+                               if match_url is None or match_url in page.url),
+                              None)
+                if chosen is None:
+                    raise LookupError(
+                        f"no open page at {endpoint} matches {match_url!r}; "
+                        f"open pages: {[page.url for page in open_pages]}")
+                # Deliberately NOT bring_to_front(). This runs while the human
+                # is typing, and a window that raises itself mid-sentence eats
+                # the keystrokes and leaves them editing the wrong thing.
+                yield PlaywrightPage(chosen, chosen.context.new_cdp_session(chosen))
+            finally:
+                # Closes the CONNECTION, not the browser: connect_over_cdp
+                # attaches to a process this library did not start and must
+                # not end. The window stays exactly as the human left it.
+                with contextlib.suppress(Exception):
+                    browser.close()
+
+    @contextlib.contextmanager
+    def launch_with_debugging(self, port: int) -> Iterator[PlaywrightPage]:
+        """A browser with a CDP port open — the conformance suite's stand-in
+        for "a window the human already had".
+
+        Not part of the Driver protocol: production callers attach to a browser
+        someone else started, and a driver that cannot open a debugging port is
+        still a conformant driver.
+        """
+        with self._playwright() as play:
+            browser = play.chromium.launch(
+                headless=True, args=[f"--remote-debugging-port={port}"])
+            context = browser.new_context(
+                viewport={"width": 1440, "height": 900},
+                reduced_motion="no-preference", color_scheme="dark")
+            page = context.new_page()
+            try:
+                yield PlaywrightPage(page, context.new_cdp_session(page))
+            finally:
                 with contextlib.suppress(Exception):
                     browser.close()
 

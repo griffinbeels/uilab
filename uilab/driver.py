@@ -145,6 +145,28 @@ class Driver(Protocol):
         """
 
 
+    def attach(self, endpoint: str,
+               match_url: str | None = None) -> Iterator[Page]:
+        """Connect to a browser someone ELSE started, and yield one open page.
+
+        `endpoint` is a CDP HTTP endpoint (`http://localhost:9310`).
+        `match_url` selects among the open pages by substring; `None` takes the
+        first. Raises `LookupError` when nothing matches — a silent fallback to
+        some other tab is how you photograph the wrong window and believe it.
+
+        MUST NOT NAVIGATE. The state — scroll position, flipped toggles,
+        selection, the half-typed input — is the entire reason for attaching,
+        and a goto() on the way in discards exactly that.
+
+        MUST NOT close the browser on exit; it is not yours. Close only the
+        connection.
+
+        A driver that cannot do this raises `NotImplementedError`, and that is
+        a conformant answer: nothing above this seam assumes attach exists, and
+        the standards-track successor to CDP may never offer it.
+        """
+
+
 _REGISTRY: dict[str, Callable[[], Driver]] = {}
 
 
