@@ -70,9 +70,27 @@ class PlaywrightPage:
         # Wrapped so a bare expression and a statement block both work, matching
         # what CDP's Runtime.evaluate accepts — otherwise every probe has to
         # remember which form Playwright wants.
-        return self._page.evaluate(f"() => {{ return ({expression}); }}"
-                                   if expression.strip().startswith("(")
-                                   else f"() => {{ {expression} }}")
+        #
+        # Which form is chosen by TRYING the expression, not by guessing from
+        # the first character. It used to be `startswith("(")`, and that is a
+        # silent data-loss bug: anything else was wrapped as `() => { expr }`
+        # with no `return`, so `evaluate("document.title")` and
+        # `evaluate("typeof window.foo")` both came back None. Nothing raised —
+        # the probe just measured nothing, which is indistinguishable from a
+        # page that genuinely has nothing. It cost a whole debugging session in
+        # a consumer before anyone looked here (2026-07-29): every probe that
+        # happened to be written as an IIFE worked, every one written as a
+        # plain expression silently returned None, and the difference looked
+        # like a browser quirk.
+        #
+        # A statement block is a SyntaxError as an expression, so the fallback
+        # is exact rather than heuristic.
+        try:
+            return self._page.evaluate(f"() => {{ return ({expression}); }}")
+        except Exception as error:
+            if "SyntaxError" not in type(error).__name__ and "SyntaxError" not in str(error):
+                raise
+            return self._page.evaluate(f"() => {{ {expression} }}")
 
     def screenshot(self, clip: dict | None = None) -> bytes:
         return self._page.screenshot(clip=clip) if clip else self._page.screenshot()

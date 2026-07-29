@@ -333,3 +333,26 @@ def test_attach_raises_when_no_page_matches(driver_name, url):
             with driver.attach(f"http://127.0.0.1:{debug_port}",
                                match_url="no-such-page"):
                 pass
+
+
+def test_evaluate_returns_a_plain_expression(page):
+    """A bare expression must come back, not None.
+
+    The wrapper used to pick its form from `expression.startswith("(")`, so
+    anything else became `() => { expr }` with no `return` and evaluated to
+    undefined. Nothing raised: the probe measured nothing, which reads exactly
+    like a page that has nothing. A consumer lost a debugging session to it —
+    every probe written as an IIFE worked, every one written plainly returned
+    None, and the difference looked like a browser quirk (2026-07-29).
+    """
+    assert page.evaluate("1 + 1") == 2
+    assert page.evaluate("typeof window.document") == "object"
+    assert page.evaluate("document.querySelectorAll('.twin').length") == 2
+    # The IIFE form that always worked must keep working.
+    assert page.evaluate("(() => 7)()") == 7
+
+
+def test_evaluate_still_accepts_a_statement_block(page):
+    """The fallback is exact, not heuristic: a statement block is a SyntaxError
+    as an expression, which is what selects it."""
+    assert page.evaluate("const a = 2; return a * 3;") == 6

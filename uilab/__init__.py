@@ -32,8 +32,8 @@ Design rules, in priority order:
 from uilab.cascade import Explanation, explain
 from uilab.inspect import describe
 from uilab.project import Project, Story
-from uilab import driver, laws, sheet, sweep
+from uilab import driver, laws, sheet, sweep, trace
 
 __all__ = ["Project", "Story", "explain", "Explanation", "describe",
-           "sweep", "driver", "laws", "sheet"]
+           "sweep", "driver", "laws", "sheet", "trace"]
 __version__ = "0.1.0"
