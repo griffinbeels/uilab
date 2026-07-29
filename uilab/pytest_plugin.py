@@ -45,7 +45,19 @@ def uilab_sweep(request):
     if os.environ.get(SKIP_ENV) == "1":
         pytest.skip(f"{SKIP_ENV}=1 — layout sweep deliberately disabled")
     project = _project(request)
-    return sweep.run(project, driver_name=request.config.getoption("--uilab-driver"))
+    # Defensive lookup: this fixture is usable by IMPORTING it into a test
+    # module, not only via the pytest11 entry point -- and that matters,
+    # because an entry point only exists for an INSTALLED package. A consumer
+    # whose package manager prunes the editable install (uv sync does, for
+    # anything absent from the lockfile) can still put uilab on sys.path and
+    # import the fixture; then pytest_addoption never ran and this option does
+    # not exist.
+    driver_name = None
+    try:
+        driver_name = request.config.getoption("--uilab-driver")
+    except ValueError:
+        pass
+    return sweep.run(project, driver_name=driver_name)
 
 
 def assert_no_new_defects(project, result) -> None:
