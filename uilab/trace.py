@@ -29,12 +29,23 @@ frames are a log and a log is not a diagnosis:
     trace.together()         "this should all happen with the same timing" as a
                              number rather than an intention
 
-WHY THE RECORDER LIVES IN THE PAGE: `Page.evaluate` is synchronous and does not
-await a Promise, so a returned requestAnimationFrame walker resolves to null.
-Polling from here works but samples at the round-trip rate — tens of
-milliseconds — which cannot answer "what happened in the first frame". The
-recorder accumulates in the page and is read once, afterwards, through the
-synchronous seam.
+WHY THE RECORDER LIVES IN THE PAGE — the reason is CONCURRENCY, not capability.
+An awaited requestAnimationFrame walker does work: measured 2026-07-29,
+`evaluate("new Promise(...)")` returns 42, and a rAF walker returns its 8
+frames. This file claimed the opposite in three places first, which is the
+instrument telling a story about itself instead of measuring — the same fault
+it exists to catch.
+
+What an awaited walker cannot do is let anything else happen while it runs. It
+holds the driver for the whole window, and `record()` must fire the trigger and
+take screenshots DURING that window; a blocking call makes both impossible, so
+you could have frames or you could have a strip, never the two correlated. The
+second reason is contractual: promise-awaiting is Playwright's behaviour, not
+the Driver protocol's — raw CDP `Runtime.evaluate` hands back a promise HANDLE
+unless asked for `awaitPromise`, so a trace built on it would quietly stop
+working when the tool is swapped, which is the one property uilab exists to
+keep. Recording in the page and reading the array once afterwards needs nothing
+of the seam but that it returns a value.
 
 SCREENSHOTS ARE COARSER THAN THE NUMBERS, deliberately. Each one is a
 round-trip, so a handful across an animation is realistic and one per frame is

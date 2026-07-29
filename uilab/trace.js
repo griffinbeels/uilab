@@ -4,14 +4,11 @@
 //   __uilabTraceStart(config) -> true      begin recording
 //   __uilabTraceRead()        -> {frames}  stop and hand back what was recorded
 //
-// Why an in-page recorder rather than polling from the driver: the Page
-// protocol's evaluate() is synchronous and does not await a Promise, so a
-// returned requestAnimationFrame walker resolves to null. Polling from Python
-// instead works but samples at whatever the round-trip allows — tens of
-// milliseconds — which is far too coarse for the questions a trace is asked
-// (did it start from rest? did it stop dead?). Recording here at rAF rate and
-// reading the array ONCE afterwards gives real frames through a synchronous
-// seam.
+// Why an in-page recorder: NOT because evaluate() cannot await a rAF walker —
+// it can, measured. Because an awaited one holds the driver for the whole
+// window, and record() has to fire the trigger and take screenshots inside it.
+// Recording here and reading the array ONCE afterwards is what lets the numbers
+// and the strip describe the same run. Full reasoning in trace.py's docstring.
 (() => {
   const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
 

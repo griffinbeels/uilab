@@ -5,10 +5,12 @@ are arithmetic over samples, and arithmetic is where the bugs it caught
 actually lived. Each case names the real failure it guards; every one of them
 was found by hand, one round trip at a time, before this module existed.
 
-The last test is the design bet: the recorder runs IN the page at rAF rate
-because `evaluate` is synchronous and cannot await a Promise. If that ever
-stops holding, a trace silently becomes a coarse poll and every "did it start
-from rest" answer becomes noise, so it is measured rather than assumed.
+The last tests are the design bet: the recorder runs IN the page at rAF rate,
+and it keeps running while the driver is busy triggering and screenshotting. If
+either stops holding, a trace silently becomes a coarse poll and every "did it
+start from rest" answer becomes noise — so both are measured rather than
+assumed. (The bet is NOT that `evaluate` cannot await a Promise; it can, and
+saying otherwise here was this file's own first bug. trace.py has the reason.)
 """
 import http.server
 import socket
@@ -148,16 +150,57 @@ def page(request, url):
 
 
 def test_the_recorder_samples_at_frame_rate_not_at_round_trip_rate(page):
-    """THE design bet. Polling from here samples every few tens of ms, which
-    cannot answer "what happened in the first frame" — the question that found
-    the hop. A 400ms transition must yield far more samples than a poll could.
-    """
+    """Half the design bet. Polling from here samples every few tens of ms,
+    which cannot answer "what happened in the first frame" — the question that
+    found the hop. A 400ms transition must yield far more samples than a poll
+    could."""
     result = record(page, watch={"box": "#box"},
                     trigger=lambda p: p.click("#run"), ms=500)
     box = result.of("box")
     assert len(box.frames) > 15, (
         f"only {len(box.frames)} frames in 500ms -- the in-page recorder is "
         "not running; a trace has silently become a coarse poll")
+    assert box.travel("x") > 250, box.values("x")
+
+
+def test_recording_continues_while_the_driver_is_busy(page):
+    """The OTHER half, and the actual reason the recorder is in the page.
+
+    An awaited rAF walker samples at frame rate too -- `evaluate` does await a
+    Promise, measured -- but it holds the driver for the whole window, so the
+    trigger and the screenshots cannot happen inside it. Then the numbers and
+    the strip describe two different runs, which is worse than having neither.
+    Three screenshots are three round trips. This is the test that earns the
+    word "correlated": measured 2026-07-29 the strip lands at 0/250/500ms with
+    15 frames recorded between each pair and a largest inter-frame gap of
+    17.8ms -- one frame. A blocking recorder cannot produce that; its shots all
+    collapse to the end of the window.
+    """
+    window_ms = 500
+    result = record(page, watch={"box": "#box"},
+                    trigger=lambda p: p.click("#run"), ms=window_ms, shots=3)
+    box = result.of("box")
+    assert len(result.shots) == 3
+    at = [int(label.removesuffix("ms")) for label, _ in result.shots]
+
+    # The strip must SPAN the window. A first shot taken near its end is the
+    # signature of shooting after the fact, and the shape the numbers-and-strip
+    # split exists to rule out.
+    assert at[0] <= window_ms * 0.2, f"strip starts at {at[0]}ms, not the start"
+    assert at[-1] >= window_ms * 0.6, f"strip ends at {at[-1]}ms, too early"
+
+    # And recording must not pause for any of them. Measured max gap is one
+    # frame; a driver round trip that stalled the recorder would leave a hole
+    # far larger than this, which is what makes it a real check rather than a
+    # restatement of "frames exist".
+    times = [frame["t"] for frame in box.frames]
+    widest = max(b - a for a, b in zip(times, times[1:]))
+    assert widest < 50, (
+        f"a {widest:.0f}ms hole in the frames -- recording stalls while the "
+        "driver is busy, so the strip and its numbers describe different runs")
+    for lo, hi in zip(at, at[1:]):
+        between = sum(1 for t in times if lo < t < hi)
+        assert between >= 5, f"only {between} frames between {lo}ms and {hi}ms"
     assert box.travel("x") > 250, box.values("x")
 
 
