@@ -37,11 +37,22 @@ PAGE = """<!doctype html><html><head><style>
   <div class="motion" id="motion"></div>
 </body></html>"""
 
+# A page that misbehaves in all four ways problems() must notice. Kept separate
+# from PAGE so every other test in this file keeps measuring a clean document.
+NOISY_PAGE = """<!doctype html><html><body>
+  <img src="/definitely-not-here.png" alt="">
+  <script>
+    console.error("a console error");
+    setTimeout(() => { throw new Error("an uncaught page error"); }, 0);
+  </script>
+</body></html>"""
+
 
 @pytest.fixture(scope="module")
 def url(tmp_path_factory):
     root = tmp_path_factory.mktemp("page")
     (root / "index.html").write_text(PAGE, encoding="utf-8")
+    (root / "noisy.html").write_text(NOISY_PAGE, encoding="utf-8")
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
@@ -164,3 +175,34 @@ def test_wait_ms_actually_waits(page):
     page.wait_ms(350)
     elapsed = (time.monotonic() - started) * 1000
     assert elapsed >= 300, f"wait_ms(350) returned after {elapsed:.0f}ms"
+
+
+def test_problems_is_empty_on_a_clean_page(page):
+    """The half that makes the other half meaningful: a probe that always
+    reports something is a probe nobody reads."""
+    page.wait_for("body")
+    assert page.problems() == []
+
+
+def test_problems_reports_console_pageerror_and_failed_requests(page, url):
+    """A sweep that measures a throwing page and calls it clean is worse than
+    no sweep: the report is indistinguishable from a page that works."""
+    page.goto(url.replace("index.html", "noisy.html"))
+    # NOT wait_for("img"): a broken image has no box, so it is never "visible"
+    # and the wait can only time out. The document is what has arrived.
+    page.wait_for("body")
+    page.wait_ms(300)          # the pageerror is thrown from a timeout callback
+    found = " || ".join(page.problems())
+    assert "a console error" in found, found
+    assert "an uncaught page error" in found, found
+    assert "definitely-not-here.png" in found, found
+
+
+def test_problems_drains_so_the_same_fault_is_not_reported_twice(page, url):
+    """Callers ask per rung, per viewport, per sweep cell. A list that
+    accumulated would blame rung 7 for rung 2's exception."""
+    page.goto(url.replace("index.html", "noisy.html"))
+    page.wait_for("body")
+    page.wait_ms(300)
+    assert page.problems() != []
+    assert page.problems() == []

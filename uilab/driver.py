@@ -79,6 +79,23 @@ class Page(Protocol):
         with four 400ms waits finished in 1.57s).
         """
 
+    def problems(self) -> list[str]:
+        """Every fault the page reported since the last call, then forget them.
+
+        Console errors, uncaught exceptions, responses with status >= 400 and
+        failed requests — one human-readable line each.
+
+        DRAINING is the contract, not an optimisation. Callers ask once per
+        rung, per viewport, per sweep cell; a list that accumulated would
+        report rung 2's exception again under rung 7's name, which is worse
+        than silence because it sends the reader to the wrong file.
+
+        Why this is on a protocol meant to stay narrow: a sweep that measures
+        a throwing page and reports it clean is not a weaker gate, it is a
+        FALSE one — the report is indistinguishable from a page that works.
+        Every consumer wrote this listener by hand before it lived here.
+        """
+
     def matched_styles(self, selector: str, prop: str) -> list[dict]:
         """Every CSS rule that matches `selector` and sets `prop`, in cascade
         order, as `{selector, value, important, condition, origin}`.

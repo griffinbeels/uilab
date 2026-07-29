@@ -33,6 +33,32 @@ class PlaywrightPage:
     def __init__(self, page, cdp) -> None:
         self._page = page
         self._cdp = cdp
+        self._faults: list[str] = []
+        # Registered at construction, not per call. Attaching when someone
+        # thinks to ask would miss everything that happened before — which is
+        # most of what a page load does wrong.
+        page.on("console", self._on_console)
+        page.on("pageerror", self._on_page_error)
+        page.on("response", self._on_response)
+        page.on("requestfailed", self._on_request_failed)
+
+    def _on_console(self, message) -> None:
+        if message.type == "error":
+            self._faults.append(f"console.error: {message.text}")
+
+    def _on_page_error(self, error) -> None:
+        self._faults.append(f"pageerror: {error}")
+
+    def _on_response(self, response) -> None:
+        if response.status >= 400:
+            self._faults.append(f"HTTP {response.status} {response.url}")
+
+    def _on_request_failed(self, request) -> None:
+        self._faults.append(f"requestfailed: {request.url} ({request.failure})")
+
+    def problems(self) -> list[str]:
+        drained, self._faults = self._faults, []
+        return drained
 
     def goto(self, url: str) -> None:
         self._page.goto(url, wait_until="domcontentloaded")
