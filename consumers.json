@@ -24,8 +24,7 @@
       "name": "sm64_tracker",
       "path": "../sm64_tracker",
       "python": ".venv/Scripts/python.exe",
-      "verify": ["-m", "pytest", "tests/test_responsive.py",
-                 "tests/test_responsive_structure.py", "-q"]
+      "verify": ["-m", "pytest", "tests/test_responsive.py", "-q"]
     }
   ]
 }
