@@ -98,7 +98,27 @@ def run(project: Project, viewports: list[Viewport] | None = None,
                         page.evaluate(PROBE_JS)
                 result = _probe(page, story, project)
                 if isinstance(result, dict) and result.get("error"):
-                    continue                    # story not applicable at this size
+                    # The probe's only error is "scope selector matched
+                    # nothing" (probes.js) -- a story whose `at` genuinely
+                    # is not applicable at this viewport/state has `skip_if`
+                    # for exactly that, checked and honoured BEFORE this call.
+                    # Reaching here with an error means the Story's `at` is
+                    # wrong for the state its own `setup`/`skip_if` just
+                    # produced, which is a bug in the Story, not a legitimate
+                    # skip -- silently `continue`-ing past it is what let a
+                    # rewritten selector go on matching nothing at EVERY
+                    # viewport, forever, three separate times in one
+                    # consuming project (sm64_tracker, 2026-08-03) before
+                    # anyone noticed the story had stopped measuring
+                    # anything. Fail loudly instead: a scope that never
+                    # matches is a broken gate, and a broken gate that
+                    # reports "0 defects" is worse than no gate at all.
+                    story_name = story.name if story else "page"
+                    raise RuntimeError(
+                        f"uilab story {story_name!r} at {view.width}x"
+                        f"{view.height}: {result['error']} -- fix the "
+                        "Story's `at` selector or its `skip_if`, don't "
+                        "swallow the error")
                 label = story.name if story else "page"
                 for kind in ("overflow", "clipped", "truncated", "overlap",
                              "decoration"):
