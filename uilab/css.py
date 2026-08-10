@@ -38,13 +38,32 @@ def blank_comments(css: str) -> str:
                   css, flags=re.S)
 
 
+_SCRIPT = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.I | re.S)
+_STYLE = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.I | re.S)
+
+
 def stylesheet_text(path: Path) -> str:
-    """The CSS in `path`: the whole file, or the <style> block if it is HTML."""
+    """The CSS in `path`: the whole file, or EVERY <style> block if it is HTML.
+
+    Scripts are stripped BEFORE the search, and that is the load-bearing part
+    (2026-08-10, sm64_tracker's harness page). The old version scanned for the
+    literal `"<style>"` and sliced to the next `"</style>"`. A page whose own
+    JavaScript MENTIONS those strings -- one that lifts a sibling page's design
+    system at runtime, `source.indexOf("<style>")` -- matched inside the
+    script and returned a 326-character slice of JavaScript. Every law that
+    reads the stylesheet then passed on ~0 rules: `parse_blocks` found no
+    blocks, so `assert_components_use_container_queries` reported clean for a
+    page whose component CSS it had never seen. That is the "silence, not
+    coverage" case its own docstring warns about, arriving through the parser
+    rather than through the page.
+
+    Attributes are allowed on the tag now too (`<style id="...">`), and ALL
+    blocks are joined rather than only the first -- a page with a base sheet
+    and an override sheet had been half-measured, silently.
+    """
     text = path.read_text(encoding="utf-8")
-    if "<style>" not in text:
-        return text
-    start = text.index("<style>") + len("<style>")
-    return text[start:text.index("</style>", start)]
+    blocks = _STYLE.findall(_SCRIPT.sub("", text))
+    return "\n".join(blocks) if blocks else text
 
 
 def parse_blocks(css: str) -> list[Block]:
