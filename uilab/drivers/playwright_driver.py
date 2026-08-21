@@ -100,6 +100,12 @@ class PlaywrightPage:
         # multi-match instead of guessing. That refusal is the point.
         self._page.locator(selector).click()
 
+    def set_input_files(self, selector: str, *paths: str) -> None:
+        # Strict for the same reason .click() is: the Locator raises on a
+        # multi-match instead of guessing which input was meant.
+        self._page.locator(selector).set_input_files(
+            [str(path) for path in paths] if paths else [])
+
     def count(self, selector: str) -> int:
         return self._page.locator(selector).count()
 

@@ -35,6 +35,8 @@ PAGE = """<!doctype html><html><head><style>
   <div class="grid"><div class="tall" style="height:300px"></div>
                     <div class="stretched" id="stretched"></div></div>
   <div class="motion" id="motion"></div>
+  <input type="file" id="onefile">
+  <input type="file" class="twinfile"><input type="file" class="twinfile">
 </body></html>"""
 
 # A page that misbehaves in all four ways problems() must notice. Kept separate
@@ -100,6 +102,37 @@ def test_click_REFUSES_an_ambiguous_selector(page):
     """
     with pytest.raises(Exception):
         page.click(".twin")
+
+
+def test_set_input_files_reaches_a_control_script_cannot_touch(page, tmp_path):
+    """A file input is the one control a browser REFUSES to let script set,
+    which is the whole point of it. Without this a feature that BEGINS with
+    choosing a file is unreachable, and the fallback every consumer takes is
+    to post to the endpoint instead — testing the server and calling it a UI
+    check."""
+    chosen = tmp_path / "picked.txt"
+    chosen.write_text("hello", encoding="utf-8")
+    page.set_input_files("#onefile", str(chosen))
+    assert page.evaluate("(document.querySelector('#onefile').files.length)") == 1
+    assert page.evaluate(
+        "(document.querySelector('#onefile').files[0].name)") == "picked.txt"
+
+
+def test_set_input_files_clears_when_given_nothing(page, tmp_path):
+    chosen = tmp_path / "picked.txt"
+    chosen.write_text("hello", encoding="utf-8")
+    page.set_input_files("#onefile", str(chosen))
+    page.set_input_files("#onefile")
+    assert page.evaluate("(document.querySelector('#onefile').files.length)") == 0
+
+
+def test_set_input_files_REFUSES_an_ambiguous_selector(page, tmp_path):
+    """Strict for the same reason click is: handing the file to whichever
+    input happened to be first is a silent wrong answer."""
+    chosen = tmp_path / "picked.txt"
+    chosen.write_text("hello", encoding="utf-8")
+    with pytest.raises(Exception):
+        page.set_input_files(".twinfile", str(chosen))
 
 
 def test_reduced_motion_defaults_to_no_preference(page):

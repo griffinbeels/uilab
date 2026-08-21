@@ -61,6 +61,21 @@ class Page(Protocol):
         debugging sessions before uilab was extracted.
         """
 
+    def set_input_files(self, selector: str, *paths: str) -> None:
+        """Hand a `<input type="file">` the files a person would have chosen.
+
+        A file input cannot be driven by dispatching events — the browser
+        refuses to let script set its value, which is the whole point of the
+        control. So a page whose feature BEGINS with choosing a file is
+        unreachable without this, and the alternative every consumer reaches
+        for is to skip the UI and post to the endpoint directly, which tests
+        the server and calls it a UI check.
+
+        Strict like `click`: raises on a multi-match rather than picking one.
+        Passing no paths clears the selection, which is how a "you have not
+        chosen a file yet" state is reached deliberately.
+        """
+
     def count(self, selector: str) -> int: ...
 
     def wait_for(self, selector: str, timeout_ms: int = 10_000) -> None:
