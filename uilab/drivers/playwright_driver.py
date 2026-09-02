@@ -97,6 +97,10 @@ class PlaywrightPage:
     def screenshot(self, clip: dict | None = None) -> bytes:
         return self._page.screenshot(clip=clip) if clip else self._page.screenshot()
 
+    def hover(self, selector: str) -> None:
+        # Strict for the same reason .click() is.
+        self._page.locator(selector).hover()
+
     def click(self, selector: str) -> None:
         # .click() on a Locator is strict by construction: it raises on a
         # multi-match instead of guessing. That refusal is the point.

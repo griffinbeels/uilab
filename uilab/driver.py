@@ -52,6 +52,14 @@ class Page(Protocol):
         capture.
         """
 
+    def hover(self, selector: str) -> None:
+        """Move the pointer onto the ONE element matching `selector`.
+
+        For `:hover`-revealed controls -- a remove × that is laid out but
+        invisible until the pointer crosses it. Strict like `click`: a
+        multi-match raises rather than hovering whichever came first.
+        """
+
     def click(self, selector: str) -> None:
         """Click the ONE element matching `selector`.
 
