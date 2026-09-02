@@ -17,6 +17,13 @@ from uilab.project import Project, Story, stylesheet_paths
 
 Viewport = namedtuple("Viewport", "width height label")
 
+
+def viewport_key(view: Viewport) -> str:
+    """The prefix every defect key at this viewport starts with (`1920x1080`),
+    and the id a per-viewport test case carries. One derivation, so the stale
+    gate's per-viewport filter can never drift from the key builder."""
+    return f"{view.width}x{view.height}"
+
 PROBE_JS = (Path(__file__).parent / "probes.js").read_text(encoding="utf-8")
 
 # WCAG 1.4.10 Reflow: content must reflow at 320 CSS px with no two-dimensional
@@ -123,7 +130,7 @@ def run(project: Project, viewports: list[Viewport] | None = None,
                 for kind in ("overflow", "clipped", "truncated", "overlap",
                              "decoration"):
                     for item in result.get(kind, []):
-                        defects[f"{view.width}x{view.height} [{label}] {kind} :: "
+                        defects[f"{viewport_key(view)} [{label}] {kind} :: "
                                 f"{item['selector']}"] = item["detail"]
                 if shots:
                     images.append((f"{view.width}x{view.height}-{label}",
@@ -138,10 +145,33 @@ def new_defects(project: Project, result: dict) -> dict[str, str]:
             if key not in project.known_defects}
 
 
-def stale_exemptions(project: Project, result: dict) -> list[str]:
+def stale_exemptions(project: Project, result: dict,
+                     viewport: Viewport | None = None) -> list[str]:
     """known_defects rows whose defect no longer occurs.
 
     A stale exemption is a lie about what is broken, and the list stops meaning
     anything the moment one is allowed to sit there.
+
+    With a `viewport`, only the rows naming THAT viewport are judged: a
+    per-viewport case's result holds nothing else, so judging every row
+    against it would call every other viewport's exemption stale. The rows
+    no per-viewport case can reach -- ones naming a viewport outside the
+    matrix -- are `exemptions_outside_matrix`'s job.
     """
-    return [key for key in project.known_defects if key not in result["defects"]]
+    rows = project.known_defects
+    if viewport is not None:
+        prefix = viewport_key(viewport) + " "
+        rows = [key for key in rows if key.startswith(prefix)]
+    return [key for key in rows if key not in result["defects"]]
+
+
+def exemptions_outside_matrix(project: Project) -> list[str]:
+    """known_defects rows naming a viewport the matrix does not contain.
+
+    Browser-free. A whole-matrix sweep reports such a row stale for free; a
+    per-viewport sweep never judges it at all, so this is the check that
+    keeps the two shapes equally strict.
+    """
+    live = {viewport_key(view) for view in derived_matrix(project)}
+    return [key for key in project.known_defects
+            if key.split(" ", 1)[0] not in live]

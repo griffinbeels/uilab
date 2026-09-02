@@ -62,6 +62,32 @@ def test_exemptions_are_not_stale(uilab_sweep):
     assert_no_stale_exemptions(PROJECT, uilab_sweep)
 ```
 
+The same two gates one viewport per test case, for a suite that runs on
+several workers -- a whole-matrix sweep is a single unit of work and sets the
+floor under any parallel run (sm64_tracker: 26 viewports x 15 stories, 179 s,
+2026-09-01). Defect keys begin with the viewport, so each case judges its own
+rows exactly; the third test is the one row shape no per-viewport case can
+reach:
+
+```python
+import pytest
+from uilab import sweep
+from uilab.pytest_plugin import (assert_exemptions_name_live_viewports,
+                                 assert_no_new_defects, assert_no_stale_exemptions,
+                                 uilab_sweep_at)
+
+uilab_project = PROJECT
+
+@pytest.mark.parametrize("viewport", sweep.derived_matrix(PROJECT), ids=sweep.viewport_key)
+def test_no_layout_defects_at_each_viewport(uilab_sweep_at, viewport):
+    result = uilab_sweep_at(viewport)
+    assert_no_new_defects(PROJECT, result)
+    assert_no_stale_exemptions(PROJECT, result, viewport=viewport)
+
+def test_every_exemption_names_a_viewport_in_the_matrix():
+    assert_exemptions_name_live_viewports(PROJECT)
+```
+
 Debugging one property, interactively:
 
 ```python
