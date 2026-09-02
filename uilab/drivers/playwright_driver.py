@@ -21,7 +21,9 @@ Why Playwright is the current default, in one paragraph each:
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import warnings
 from collections.abc import Iterator
 
 from playwright.sync_api import sync_playwright
@@ -161,6 +163,31 @@ class PlaywrightPage:
         return out
 
 
+
+def _heal_stuck_loop(moment: str) -> None:
+    """The sync API runs its event loop in a greenlet on THIS thread, so while
+    a session is open the thread's running-loop marker points at it. A start
+    that fails half-way, or a stop that raises (a browser already dead under
+    load), can leave that marker set with nobody ever going to clear it --
+    and then every later `sync_playwright().start()` on the thread raises
+    "Cannot run the event loop while another loop is running" and every
+    `asyncio.run()` raises "cannot be called from a running event loop".
+    Measured 2026-09-01 in a consumer's 16-worker suite: one such failure
+    turned into 51 setup errors on that worker, because the poisoned thread
+    outlived the test that poisoned it. Clearing the marker gives up that one
+    abandoned session (its resources go with the worker) and keeps the
+    thread usable; the warning is the tell that it happened at all."""
+    stuck = asyncio._get_running_loop()
+    if stuck is None:
+        return
+    asyncio._set_running_loop(None)
+    warnings.warn(
+        f"uilab: a stale asyncio running-loop marker was left on this thread "
+        f"{moment}; cleared it so later browsers and asyncio.run() calls work. "
+        f"The session that left it is abandoned -- look for a browser that "
+        f"failed to start or stop just before this.", RuntimeWarning, stacklevel=3)
+
+
 class _PlaywrightDriver:
     name = "playwright"
 
@@ -184,7 +211,12 @@ class _PlaywrightDriver:
         can only have one browser at a time cannot answer it.
         """
         if self._open_contexts == 0:
-            self._play = sync_playwright().start()
+            _heal_stuck_loop("before starting Playwright")
+            try:
+                self._play = sync_playwright().start()
+            except BaseException:
+                _heal_stuck_loop("after Playwright failed to start")
+                raise
         self._open_contexts += 1
         try:
             yield self._play
@@ -194,6 +226,8 @@ class _PlaywrightDriver:
                 finished, self._play = self._play, None
                 with contextlib.suppress(Exception):
                     finished.stop()
+                _heal_stuck_loop("after Playwright stopped")
+
 
     @contextlib.contextmanager
     def launch(self, headless: bool = True,
