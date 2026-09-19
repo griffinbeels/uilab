@@ -27,6 +27,28 @@ from collections.abc import Callable, Iterator
 from typing import Protocol, runtime_checkable
 
 
+DEFAULT_WAIT_MS = 10_000
+
+
+def default_wait_ms(timeout_ms: int | None = None) -> int:
+    """The bound a `wait_for` uses when the caller names none.
+
+    `UILAB_WAIT_MS` raises it for a whole run. The reason it exists: a suite
+    running sixteen browsers, sixteen servers and sixteen drivers on one
+    machine needs a longer bound than a single browser on an idle one, and
+    the alternative every consumer reaches for is editing the number in fifty
+    call sites (or worse, deciding the app is slow). An explicit argument
+    still wins -- a test that means "this must appear within 200 ms" says so.
+    """
+    if timeout_ms is not None:
+        return timeout_ms
+    try:
+        value = int(os.environ.get('UILAB_WAIT_MS', '') or DEFAULT_WAIT_MS)
+    except ValueError:
+        return DEFAULT_WAIT_MS
+    return value if value > 0 else DEFAULT_WAIT_MS
+
+
 @runtime_checkable
 class Page(Protocol):
     """One open page. Deliberately small: five verbs and two queries.
@@ -86,8 +108,15 @@ class Page(Protocol):
 
     def count(self, selector: str) -> int: ...
 
-    def wait_for(self, selector: str, timeout_ms: int = 10_000) -> None:
+    def wait_for(self, selector: str, timeout_ms: int | None = None) -> None:
         """Block until at least one element matches and is visible.
+
+        `timeout_ms=None` takes `default_wait_ms()`: ten seconds, or whatever
+        `UILAB_WAIT_MS` says. A suite that runs many browsers at once needs a
+        longer BOUND than one browser on an idle machine -- a bound is not a
+        claim about how fast the app is, and on 2026-09-18/19 a ten-second
+        one failed a release four times on a page that renders in under a
+        second when nothing else is running.
 
         The alternative every consumer reaches for is `sleep(n)`, and it is
         wrong in both directions: too short and you measure a loading state,

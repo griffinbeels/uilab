@@ -28,7 +28,7 @@ from collections.abc import Iterator
 
 from playwright.sync_api import sync_playwright
 
-from uilab.driver import register
+from uilab.driver import default_wait_ms, register
 
 
 class PlaywrightPage:
@@ -115,9 +115,9 @@ class PlaywrightPage:
     def count(self, selector: str) -> int:
         return self._page.locator(selector).count()
 
-    def wait_for(self, selector: str, timeout_ms: int = 10_000) -> None:
+    def wait_for(self, selector: str, timeout_ms: int | None = None) -> None:
         self._page.locator(selector).first.wait_for(
-            state="visible", timeout=timeout_ms)
+            state="visible", timeout=default_wait_ms(timeout_ms))
 
     def emulate_motion(self, reduced: bool) -> None:
         self._page.emulate_media(reduced_motion="reduce" if reduced else "no-preference")

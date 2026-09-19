@@ -70,3 +70,27 @@ def test_every_declared_driver_module_exists():
     """A row naming a file that is gone exempts nothing and looks healthy."""
     for relative in DRIVER_MODULES:
         assert (UILAB / relative).exists(), f"{relative} is listed but missing"
+
+
+def test_the_default_wait_is_a_bound_a_run_can_raise(monkeypatch):
+    """A suite running many browsers at once needs a longer BOUND than one
+    browser on an idle machine. That is not a claim about how fast the app
+    is, and editing the number in fifty call sites is the alternative.
+
+    Measured 2026-09-18/19 on sm64_tracker: a ten-second wait for a page that
+    renders in under a second alone failed four release attempts, each time
+    on a different selector, while sixteen servers and browsers shared the
+    machine."""
+    from uilab.driver import DEFAULT_WAIT_MS, default_wait_ms
+
+    monkeypatch.delenv('UILAB_WAIT_MS', raising=False)
+    assert default_wait_ms() == DEFAULT_WAIT_MS
+    assert default_wait_ms(250) == 250, 'an explicit bound always wins'
+
+    monkeypatch.setenv('UILAB_WAIT_MS', '45000')
+    assert default_wait_ms() == 45_000
+    assert default_wait_ms(250) == 250, 'the env raises the DEFAULT, not every wait'
+
+    for nonsense in ('', 'soon', '0', '-5'):
+        monkeypatch.setenv('UILAB_WAIT_MS', nonsense)
+        assert default_wait_ms() == DEFAULT_WAIT_MS, nonsense
